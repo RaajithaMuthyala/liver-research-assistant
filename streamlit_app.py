@@ -1,8 +1,7 @@
-import streamlit as st
+# Or use any text editor to replace the contentimport streamlit as st
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
 import re
 
 st.set_page_config(
@@ -13,34 +12,53 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    """Load the fine-tuned model"""
+    """Load the fine-tuned model from Hugging Face"""
     try:
-        # Load your fine-tuned model (we'll update this path later)
-        model_path = "./liver-model-final"
-        tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
+        # Try to load your fine-tuned model from Hugging Face
+        model_name = "Raajitha/liver-research-model"
+        
+        st.info(f"🔄 Loading model from Hugging Face: {model_name}")
+        
+        # Load tokenizer and model from Hugging Face
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
         
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             
-        base_model = AutoModelForCausalLM.from_pretrained(
-            "microsoft/DialoGPT-medium",
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
             torch_dtype=torch.float16,
-            device_map="auto"
+            device_map="auto",
+            low_cpu_mem_usage=True
         )
         
-        # Try to load fine-tuned weights if available
-        try:
-            model = PeftModel.from_pretrained(base_model, model_path)
-            st.success("✅ Fine-tuned model loaded successfully!")
-        except:
-            model = base_model
-            st.warning("⚠️ Using base model (fine-tuned weights not found)")
-        
+        st.success("✅ Fine-tuned model loaded from Hugging Face!")
         return model, tokenizer, True
         
     except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None, None, False
+        # Fallback to base model if fine-tuned model fails
+        st.warning(f"⚠️ Could not load fine-tuned model: {e}")
+        st.info("🔄 Loading base model as fallback...")
+        
+        try:
+            base_model_name = "microsoft/DialoGPT-medium"
+            tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+            
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+                
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model_name,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
+            
+            st.warning("⚠️ Using base model (fine-tuned weights not found)")
+            return model, tokenizer, True
+            
+        except Exception as base_error:
+            st.error(f"❌ Failed to load any model: {base_error}")
+            return None, None, False
 
 def generate_answer(question, model, tokenizer):
     """Generate answer using the model"""
@@ -52,7 +70,7 @@ def generate_answer(question, model, tokenizer):
     with torch.no_grad():
         outputs = model.generate(
             inputs,
-            max_length=inputs.shape[1] + 100,
+            max_length=inputs.shape[1] + 150,  # Increased for better responses
             num_return_sequences=1,
             temperature=0.7,
             do_sample=True,
@@ -100,6 +118,14 @@ def main():
         type=['csv']
     )
     
+    # Model info in sidebar
+    st.sidebar.header("🤖 Model Status")
+    if model_loaded:
+        st.sidebar.success("🟢 Model: Ready")
+        st.sidebar.info("📍 Source: Hugging Face Hub")
+    else:
+        st.sidebar.error("🔴 Model: Error")
+    
     # Main interface
     col1, col2 = st.columns([2, 1])
     
@@ -115,10 +141,12 @@ def main():
         if st.button("🔍 Get Answer", type="primary"):
             if question and model_loaded:
                 with st.spinner("Generating answer..."):
-                    answer = generate_answer(question, model, tokenizer)
-                
-                st.success("✅ **Answer:**")
-                st.write(answer)
+                    try:
+                        answer = generate_answer(question, model, tokenizer)
+                        st.success("✅ **Answer:**")
+                        st.write(answer)
+                    except Exception as e:
+                        st.error(f"Error generating answer: {e}")
                 
             elif not model_loaded:
                 st.error("Model not loaded properly")
@@ -127,11 +155,6 @@ def main():
     
     with col2:
         st.header("📊 System Info")
-        
-        if model_loaded:
-            st.success("🟢 Model: Ready")
-        else:
-            st.error("🔴 Model: Error")
         
         st.info("""
         **📚 Trained on:**
@@ -143,7 +166,15 @@ def main():
         • How does income affect liver health?
         • What social factors influence HCC?
         • How does education impact liver disease?
+        • What are the risk factors for NAFLD?
         """)
+        
+        # Show model details
+        if model_loaded:
+            with st.expander("🔧 Technical Details"):
+                st.text("Model: Fine-tuned DialoGPT")
+                st.text("Source: Hugging Face Hub")
+                st.text("Framework: PyTorch + Transformers")
     
     # CSV Analysis section
     if uploaded_file is not None:
