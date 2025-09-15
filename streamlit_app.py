@@ -1,4 +1,4 @@
-# Or use any text editor to replace the contentimport streamlit as st
+import streamlit as st
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -143,7 +143,7 @@ def main():
                 with st.spinner("Generating answer..."):
                     try:
                         answer = generate_answer(question, model, tokenizer)
-                        st.success("✅ **Answer:**")
+                        st.success(":white_check_mark: **Answer:**")
                         st.write(answer)
                     except Exception as e:
                         st.error(f"Error generating answer: {e}")
